@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+
+#Custom
+Unpacked
+output
+meshdata
+libenjoy-master
+Game
+files_Game_Sources.inc

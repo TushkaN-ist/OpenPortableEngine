@@ -1,0 +1,918 @@
+//NEED REVIEW AND REFACTORIN!!! 
+#include <Platform/PlatformDefined.h>
+#ifdef _PLATFORM_WINDOWS
+
+#include <Platform/PlatformIncludes.h>
+#include <Input/Input.h>
+#include <Graphic/Render.h>
+#include <Frame/Frame.h>
+
+#include <libenjoy.h>
+#include <libenjoy_win32.h>
+
+#include <string>
+//#include <wchar.h>
+
+#ifndef NDEBUG
+#include <stdio.h>
+#endif
+
+HINSTANCE inst;
+
+static void
+fatal_error(char *msg)
+{
+    MessageBoxA(NULL, msg, "Error", MB_OK | MB_ICONEXCLAMATION);
+    exit(EXIT_FAILURE);
+}
+
+class WInput : public Input
+{
+public:
+	WInput(){Reset();}
+	~WInput() override {}
+	
+	uint8_t BitUnpack(uint8_t keycode){
+		return ((keys[keycode/16]>>((keycode%16)*2))&3);
+	}
+	
+	bool Down(KEYCODE::keycode_t keycode) override {
+		//return BitCheckXOR(keycode,3);
+		return !(BitUnpack(keycode)^3);
+	}
+	bool Press(KEYCODE::keycode_t keycode) override {
+		//return BitCheckXOR(keycode,2);
+		return BitUnpack(keycode)&2;
+	}
+	bool Up(KEYCODE::keycode_t keycode) override {
+		//return BitCheckXOR(keycode,1);
+		return !(BitUnpack(keycode)^1);
+	}
+	void MousePos(unsigned short &x,unsigned short &y) override {
+		x=mx;y=my;
+	}
+	void Update(){
+		SetDelta(0,0);
+		UpdateMouse();
+		for(uint8_t i=0;i<16;++i){
+			keys[i]&=0xAAAAAAAA;
+		}
+		//printf("%u\n",keys[0]);
+	}
+	void Reset(){
+		for(uint8_t i=0;i<16;++i){
+			keys[i]=0;
+		}
+		//printf("%x\n",keys[0]);
+	}
+	int KeyL(uint8_t keycode){
+		return 3<<((keycode%16)*2);
+	}
+	void SetKey(uint8_t keycode){
+		keys[keycode/16]^=KeyL(keycode);//3<<((keycode%16)*2);
+	}
+	void PressKey(uint8_t keycode){
+		uint32_t ks=KeyL(keycode);//3<<((keycode%16)*2);
+		uint32_t k = keys[keycode/16]&~ks|ks;
+		keys[keycode/16]=k;//3<<((keycode%16)*2);
+	}
+	void ReleaseKey(uint8_t keycode){
+		uint32_t ks=KeyL(keycode);//3<<((keycode%16)*2);
+		uint32_t k = keys[keycode/16]&~ks|(1<<((keycode%16)*2));
+		keys[keycode/16]=k;//3<<((keycode%16)*2);
+	}
+	void UpdateMousePos(uint16_t x,uint16_t y){
+		SetDelta(x-fmx,y-fmy);
+		mx=x;my=y;
+	}
+	void UpdateMouse(){
+		fmx = mx;
+		fmy = my;
+	}
+	void SetDelta(short x,short y){
+		dx=x;dy=y;
+	}
+	void MouseDelta(short& x,short& y) override {
+		x=dx;y=dy;
+	}
+private:
+	uint16_t mx,my,fmx,fmy;
+	uint16_t dx,dy;
+	uint32_t keys[16];
+};
+class WJoystick : public Joystick{
+	private:
+	uint32_t keys[1];
+	libenjoy_joy_info *_info=NULL;
+	libenjoy_joystick *_joy=NULL;
+	uint8_t BitCheck(uint8_t keycode);
+
+	public:
+	WJoystick(int id);
+	WJoystick(libenjoy_joy_info* info);
+	static void Init();
+	static void Free();
+	static void Update();
+	static Joystick* GetJoy(int id);
+	void UpdateStates();
+	void UpdateBTNS();
+	void Reset();
+	void PressKey(uint8_t keycode);
+	void ReleaseKey(uint8_t keycode);
+	void SetInfo(int id);
+	void SetInfo(libenjoy_joy_info* info);
+	
+	~WJoystick() override ;
+	const char* Name() override ;
+	bool Down(unsigned char keycode) override ;
+	bool Press(unsigned char keycode) override ;
+	bool Up(unsigned char keycode) override ;
+	float Axis01(unsigned char axis, float deadzone=0.05f) override ;
+	float Axis(unsigned char axis, float deadzone=0.05f) override ;
+	short AxisRaw(unsigned char axis, short deadzone=1638) override ;
+	unsigned char AxisCount() override ;
+	unsigned char BtnsCount() override ;
+	void Open() override ;
+	bool IsOpen() override ;
+	void Close() override ;
+};
+std::vector<WJoystick*> joys;
+std::map<int,Joystick*> joysMap;
+libenjoy_context *ctx=NULL;
+
+uint8_t WJoystick::BitCheck(uint8_t keycode){
+	return ((keys[keycode/16]>>((keycode%16)*2))&3);
+}
+WJoystick::WJoystick(int id){
+	SetInfo(id);
+	joys.push_back(this);
+}
+WJoystick::WJoystick(libenjoy_joy_info* info){
+	SetInfo(info);
+	joys.push_back(this);
+}
+WJoystick::~WJoystick(){
+	Close();
+	if (ctx){
+		for(std::map<int,Joystick*>::iterator i = joysMap.begin(); i!=joysMap.end(); i++){
+			if (i->second == (Joystick*)this){
+				joysMap.erase(i);
+			}
+		}
+	}
+	for(std::vector<WJoystick*>::iterator i = joys.begin();i!=joys.end();i++){
+		if (*i==this)
+		{
+			joys.erase(i);
+			break;
+		}
+	}
+}
+void WJoystick::Init(){
+	if (ctx==NULL){
+		ctx = libenjoy_init();
+		printf("Joys Init\n");
+	}
+	libenjoy_enumerate(ctx);
+}
+void WJoystick::Free(){
+	if (ctx){
+		std::vector<Joystick*> joys;
+		for(std::map<int,Joystick*>::iterator i = joysMap.begin(); i!=joysMap.end();i++){
+			joys.push_back(i->second);
+		}
+		joysMap.clear();
+		int joyCount=joys.size();
+		for(int i=0;i<joyCount;++i){
+			delete joys[i];
+		}
+		joys.clear();
+		libenjoy_close(ctx);
+		ctx=NULL;
+		printf("Joys Free:%i\n",joyCount);
+	}
+}
+void WJoystick::Update(){
+	if (!ctx)
+		return;
+    libenjoy_event ev;
+	int i=0;
+	while(libenjoy_poll(ctx, &ev)){i++;}
+	/*for(std::map<int,Joystick*>::iterator i = joysMap.begin(); i!=joysMap.end(); i++){
+		if (typeid(i->second) == typeid(WJoystick)){
+			printf("%s\n",i->second->Name());
+			((WJoystick*)(i->second))->UpdateBTNS();
+		}
+	}*/
+	/*for(std::vector<WJoystick*>::iterator i = joys.begin();i!=joys.end();i++){
+		(*i)->UpdateBTNS();
+	}*/
+	if (i>0){
+		int joyCount = joys.size();
+		for(int i=0;i<joyCount;++i){
+			joys[i]->UpdateBTNS();
+		}
+	}
+}
+Joystick* WJoystick::GetJoy(int id){
+	std::map<int,Joystick*>::iterator f = joysMap.find(id);
+	Joystick *joy;
+	if (f == joysMap.end()){
+		if (ctx && id < ctx->info_list.count){
+			joy = new WJoystick(ctx->info_list.list[id]);
+		}else{
+			joy = new Joystick();
+		}
+		joysMap.insert(std::pair<int,Joystick*>(id,joy));
+	}else{
+		joy = f->second;
+		if (typeid(joy) != typeid(WJoystick)){
+			delete joy;
+			joy = new WJoystick(ctx->info_list.list[id]);
+			joysMap[id] = joy;// .insert(std::pair<int,Joystick*>(id,joy));
+		}
+	}
+	return joy;
+}
+void WJoystick::UpdateStates(){
+	int i=0;
+	int btins = BtnsCount();
+	//printf("BTNS:%u\n",btins);
+	while(i<btins){
+		bool d = Press(i);
+		if (_joy->os->buttons[i]){
+			if (!d)
+				PressKey(i);
+		}else{
+			if (d){
+				ReleaseKey(i);
+			}
+		}
+		++i;
+	}
+}
+void WJoystick::UpdateBTNS(){
+	for(uint8_t i=0;i<1;++i){
+		//uint32_t k = keys[i];
+		keys[i]&=0xAAAAAAAA;
+		//printf("%u:%u\n",k,keys[i]);
+	}
+	UpdateStates();
+}
+void WJoystick::Reset(){
+	for(uint8_t i=0;i<1;++i){
+		keys[i]=0;
+	}
+	//printf("%x\n",keys[0]);
+}
+void WJoystick::PressKey(uint8_t keycode){
+	uint32_t ks=3<<((keycode%16)*2);
+	uint32_t k = keys[keycode/16]&~ks|ks;
+	keys[keycode/16]=k;//3<<((keycode%16)*2);
+}
+void WJoystick::ReleaseKey(uint8_t keycode){
+	uint32_t ks=3<<((keycode%16)*2);
+	uint32_t k = keys[keycode/16]&~ks|(1<<((keycode%16)*2));
+	keys[keycode/16]=k;//3<<((keycode%16)*2);
+}
+void WJoystick::SetInfo(int id){
+	libenjoy_joy_info_list *list = &ctx->info_list;
+	SetInfo(list->list[id]);
+}
+void WJoystick::SetInfo(libenjoy_joy_info* info){
+	_info = info;
+}
+
+const char* WJoystick::Name(){
+	return _info->name;
+}
+float WJoystick::Axis01(unsigned char axis, float deadzone){
+	return (Axis(axis,deadzone)+1.0f)/2.0f;
+}
+float WJoystick::Axis(unsigned char axis, float deadzone){
+	return AxisRaw(axis,32767*deadzone)/32767.0f;
+}
+short WJoystick::AxisRaw(unsigned char axis,short deadzone){
+	if (_joy){
+		short value = _joy->os->axes[axis];
+		value=value<-32767?-32767:value;
+		return value<deadzone && value>-deadzone?0:value;
+	}else{
+		return 0;
+	}
+}
+unsigned char WJoystick::AxisCount(){
+	if (_joy)
+		return _joy->num_axes;
+	else
+		return 0;
+}
+unsigned char WJoystick::BtnsCount(){
+	if (_joy)
+		return _joy->num_buttons;
+	else
+		return 0;
+}
+void WJoystick::Open(){
+	printf("Try open Joy:%s state:",Name());
+	Reset();
+	if (_joy == nullptr){
+		if (ctx){
+			_joy = libenjoy_open_joystick(ctx, _info->id);
+			printf("OK\n");
+		}else
+			printf("Error library not Init\n");
+	}
+}
+bool WJoystick::IsOpen(){
+	return _joy;
+}
+void WJoystick::Close(){
+	if (_joy != nullptr && ctx){
+       	libenjoy_close_joystick(_joy);
+		_joy = nullptr;
+		printf("Close Joy:%s\n",Name());
+	}
+}
+bool WJoystick::Down(unsigned char keycode){
+	return !(BitCheck(keycode)^3);
+}
+bool WJoystick::Press(unsigned char keycode){
+	return BitCheck(keycode)&2;
+}
+bool WJoystick::Up(unsigned char keycode){
+	return !(BitCheck(keycode)^1);
+}
+
+void Joystick::Init(){
+	WJoystick::Init();
+}
+void Joystick::Free(){
+	WJoystick::Free();
+}
+int Joystick::GetConnected(){
+	if (ctx){
+		int joyCount=ctx->info_list.count;
+		for(int i =0;i<joyCount;i++){
+			printf("ID:%i Name:%s\n",ctx->info_list.list[i]->id,ctx->info_list.list[i]->name);
+		}
+		return joyCount;
+	}else{
+		return 0;
+	}
+}
+Joystick* Joystick::GetJoy(int id){
+	return WJoystick::GetJoy(id);
+}
+Frame::~Frame(){}
+class FrameWindows : public Frame
+{
+public:
+	FrameWindows(unsigned short width,unsigned short height,Style style);
+	~FrameWindows() override;
+	
+	void SetStyle(Frame::Style style=(Style)(Style::Base|Style::Closing)) override ;
+	void SetRect(short x,short y,unsigned short width,unsigned short height) override ;
+	void SetPos(short x,short y) override ;
+	void SetSize(unsigned short width,unsigned short height) override ;
+	void SetTitle(const char* text) override ;
+	
+	void GetRect(short &x,short &y,unsigned short &width,unsigned short &height) override ;
+	void GetPos(short &x,short &y) override ;
+	void GetSize(unsigned short &width,unsigned short &height) override ;
+	
+	bool Update();
+	Input* GetInput(){
+		return input;
+	}
+	bool Close(bool force = false);
+	
+	inline HWND Handle(){
+		return hWnd;
+	}
+	inline HDC DC(){
+		return real_dc;
+	}
+	bool IsAlive() override{
+		return hWnd!=nullptr;
+	}
+private:
+	LRESULT CALLBACK WindowProc(Frame* frame, UINT msg, WPARAM wparam, LPARAM lparam);
+	static LRESULT CALLBACK static_WindowProc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam);
+	std::string className;
+	WInput* input;
+	HWND hWnd;
+	HDC real_dc;
+	DWORD window_style;
+	int rect[4];
+	WPARAM lastKey;
+};
+
+Frame* Frame::Create(unsigned short width,unsigned short height,Style style){
+	return new FrameWindows(width,height,style);
+}
+
+void DefaultEvent(Frame::Events ev, Frame* frame){
+	if (ev == Frame::evClose){
+		frame->Close(true);
+	}
+}
+
+LRESULT CALLBACK FrameWindows::WindowProc(Frame* frame, UINT msg, WPARAM wparam, LPARAM lparam)
+{
+    LRESULT result = 0;
+
+    switch (msg) {
+		//case WM_NCCREATE:
+		case WM_MOVE:
+		case WM_SIZE:
+			RECT grect;
+			GetWindowRect( hWnd, &grect );
+			rect[0]=grect.left;
+			rect[1]=grect.top;
+			GetClientRect( hWnd, &grect );
+			rect[2]=grect.right;
+			rect[3]=grect.bottom;
+			if (eventsCallBack!=nullptr)
+				eventsCallBack(Events::evResize,frame);
+			//printf("Rect:%i,%i,%i,%i\n",rect[0],rect[1],rect[2],rect[3]);
+		break;
+		case WM_SETFOCUS:
+			if (eventsCallBack!=nullptr)
+				eventsCallBack(Events::evFocusSet,frame);
+		break;
+		case WM_KILLFOCUS:
+			input->Reset();
+			if (eventsCallBack!=nullptr)
+				eventsCallBack(Events::evFocusLose,frame);
+		break;
+		case WM_CLOSE:
+			if (eventsCallBack!=nullptr)
+				eventsCallBack(Events::evClose,frame);
+			return 0;
+		break;
+        case WM_DESTROY:
+			return 0;
+            break;
+		case WM_MOUSEMOVE:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+		break;
+		case WM_LBUTTONDBLCLK:
+		case WM_LBUTTONDOWN:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->PressKey(KEYCODE::MB_LBUTTON);
+		break;
+		case WM_MBUTTONDBLCLK:
+		case WM_MBUTTONDOWN:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->PressKey(KEYCODE::MB_MBUTTON);
+		break;
+		case WM_RBUTTONDBLCLK:
+		case WM_RBUTTONDOWN:
+			//printf("%i\n",wparam);
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->PressKey(KEYCODE::MB_RBUTTON);
+		break;
+#if _WIN32_WINNT>=0x0500
+		case WM_XBUTTONDBLCLK:
+		case WM_XBUTTONDOWN:
+			//printf("%i\n",wparam);
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->PressKey(wparam);
+		break;
+#endif
+		case WM_LBUTTONUP:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->ReleaseKey(KEYCODE::MB_LBUTTON);
+		break;
+		case WM_MBUTTONUP:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->ReleaseKey(KEYCODE::MB_MBUTTON);
+		break;
+		case WM_RBUTTONUP:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->ReleaseKey(KEYCODE::MB_RBUTTON);
+		break;
+#if _WIN32_WINNT>=0x0500
+		case WM_XBUTTONUP:
+			input->UpdateMousePos(GET_X_LPARAM(lparam),GET_Y_LPARAM(lparam));
+			input->ReleaseKey(wparam);
+		break;
+#endif
+		case WM_KEYDOWN:
+			if (lastKey==wparam)
+				break;
+			lastKey = wparam;
+			//printf("%i\n",wparam);
+			input->PressKey(wparam);
+		break;
+		case WM_KEYUP:
+			input->ReleaseKey(wparam);
+			lastKey=0;
+		break;
+        default:
+            result = DefWindowProcA(hWnd, msg, wparam, lparam);
+            break;
+    }
+
+    return result;
+}
+
+bool FrameWindows::Close(bool force){
+	if (force){
+		if (IsAlive()){
+			SetWindowLongPtr(hWnd, GWL_USERDATA, 0);
+			DestroyWindow( hWnd );
+			UnregisterClassA( className.c_str(), GetModuleHandle( NULL ) );
+			ReleaseDC(Handle(), DC());
+			delete input;
+			input = NULL;
+			hWnd = nullptr;
+		}
+	}else{
+		return CloseWindow(hWnd);
+	}
+	return hWnd==nullptr;
+}
+
+LRESULT CALLBACK FrameWindows::static_WindowProc(HWND window, UINT msg, WPARAM wparam, LPARAM lparam){
+	FrameWindows *view;
+	
+	view = (FrameWindows*) GetWindowLongPtr(window, GWL_USERDATA);
+
+	if (view && window == view->Handle())
+		return view->WindowProc(view, msg, wparam, lparam);
+
+    return DefWindowProc(window, msg, wparam, lparam);
+}
+
+u_int windowID;
+
+FrameWindows::FrameWindows(unsigned short width,unsigned short height,Frame::Style style){
+	input = new WInput();
+	className = DEFNAME;
+	className+=std::to_string(windowID++);
+	WNDCLASSA window_class = {
+        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
+        .hInstance = inst,
+        .hCursor = LoadCursor(0, IDC_ARROW),
+        .hbrBackground = 0,
+        .lpszClassName = className.c_str()
+    };
+    window_class.lpfnWndProc = static_WindowProc;
+    if (!RegisterClassA(&window_class)) {
+        fatal_error("Failed to register window.");
+    }
+	window_style = WS_OVERLAPPED;
+	if ( style & Frame::Fullscreen ){
+		
+	}else{
+		window_style = WS_CAPTION | WS_MINIMIZEBOX | WS_VISIBLE;
+		if ( style & Frame::Closing ) window_style |= WS_SYSMENU;
+		if ( style & Frame::Resize ) window_style |= WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX;
+	}
+    // Specify a desired width and height, then adjust the rect so the window's client area will be
+    // that size.
+    RECT rect = {
+        .right = width,
+        .bottom = height
+    };
+    //DWORD window_style = WS_OVERLAPPEDWINDOW;
+    AdjustWindowRect(&rect, window_style, false);
+	std::string tittleA(_APP_NAME);
+    hWnd = CreateWindowExA(
+        0,
+        className.c_str(),
+        tittleA.c_str(),
+        window_style,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        0,
+        0,
+        inst,
+        0);
+
+    if (!hWnd) {
+		fatal_error("Failed to create window.");
+    }
+#if _WIN32_WINNT>=0x0601
+	RegisterTouchWindow(hWnd, 0);//Регистрация тачскрина Windows 8 и далее
+#endif
+	if (SetWindowLongPtr(hWnd, GWL_USERDATA, (LONG_PTR) this) == 0)
+	{
+		if (GetLastError() != 0)
+			fatal_error("Failed to set userdata.");
+	}
+	RECT grect;
+	GetWindowRect( hWnd, &grect );
+	this->rect[0]=grect.left;
+	this->rect[1]=grect.top;
+	GetClientRect( hWnd, &grect );
+	this->rect[2]=grect.right;
+	this->rect[3]=grect.bottom;
+	SetTitle(_APP_NAME);
+	real_dc = GetDC(hWnd);
+	eventsCallBack = DefaultEvent;
+	//isAlive=true;
+	
+}
+void FrameWindows::SetTitle(const char* text){
+	SetWindowTextA(hWnd,text);
+}
+
+bool FrameWindows::Update(){
+	if (IsAlive()){
+		input->Update();
+		WJoystick::Update();
+		MSG msg;//менеджер сообщений окна
+		while (PeekMessage(&msg, hWnd, 0, 0, PM_REMOVE)) {//получаем новые статусы окна и инпутов для движка
+			TranslateMessage(&msg);
+			DispatchMessageA(&msg);
+		}
+		return IsAlive();
+	}else
+		return false;//выдаем false посколько окна больше не существует
+}
+
+
+FrameWindows::~FrameWindows(){
+	Close(true);
+}
+
+void FrameWindows::SetStyle(Frame::Style style){
+	window_style = WS_CAPTION | WS_MINIMIZEBOX | WS_VISIBLE;
+	if ( style & Frame::Closing ) window_style |= WS_SYSMENU;
+	if ( style & Frame::Resize ) window_style |= WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX;
+	SetWindowLong(hWnd, GWL_STYLE, window_style);
+	ShowWindow(hWnd, SW_SHOW);
+}
+void FrameWindows::SetRect(short x,short y,unsigned short width,unsigned short height){
+		RECT crect = {
+		.left = x,
+		.top = y,
+		.right = width+x,
+		.bottom = height+y
+	};
+	//printf("Size:%i,%i,%i,%i\n",rect[0],rect[1],rect[2],rect[3]);
+	//printf("SizeT:%i,%i,%i,%i\n",crect.left,crect.top,crect.right,crect.bottom);
+	AdjustWindowRectEx(&crect,window_style,false,WS_EX_APPWINDOW);
+	MoveWindow(hWnd,rect[0]=crect.left,rect[1]=crect.top,rect[2]=crect.right-crect.left,rect[3]=crect.bottom-crect.top,false);
+}
+void FrameWindows::SetSize(unsigned short width,unsigned short height){
+	SetRect(rect[0],rect[1],width,height);
+}
+void FrameWindows::SetPos(short x,short y){
+	SetRect(x,y,rect[2],rect[3]);
+}
+
+void FrameWindows::GetRect(short &x,short &y,unsigned short &width,unsigned short &height){
+	GetPos(x,y);
+	GetSize(width,height);
+}
+void FrameWindows::GetSize(unsigned short &width,unsigned short &height){
+	width=rect[2];
+	height=rect[3];
+}
+void FrameWindows::GetPos(short &x,short &y){
+	x=rect[0];
+	y=rect[1];
+}
+
+////////////RENDER INIT///////////////
+//
+//
+//
+//
+#include <GL/Extensions.h>
+
+	//#define APIENTRYP WINAPI *
+	//typedef ptrdiff_t GLsizeiptr;
+	//typedef ptrdiff_t GLintptr;
+	typedef char GLchar;
+	
+	#define WGL_CONTEXT_MAJOR_VERSION_ARB 0x2091
+	#define WGL_CONTEXT_MINOR_VERSION_ARB 0x2092
+	#define WGL_CONTEXT_PROFILE_MASK_ARB 0x9126
+	#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
+
+	#define WGL_DRAW_TO_WINDOW_ARB 0x2001
+	#define WGL_ACCELERATION_ARB 0x2003
+	#define WGL_SUPPORT_OPENGL_ARB 0x2010
+	#define WGL_DOUBLE_BUFFER_ARB 0x2011
+	#define WGL_PIXEL_TYPE_ARB 0x2013
+	#define WGL_COLOR_BITS_ARB 0x2014
+	#define WGL_DEPTH_BITS_ARB 0x2022
+	#define WGL_STENCIL_BITS_ARB 0x2023
+	#define WGL_SAMPLE_BUFFERS_ARB 0x2041
+	#define WGL_SAMPLES_ARB 0x2042
+	#define WGL_TYPE_RGBA_ARB 0x202B
+	#define WGL_FULL_ACCELERATION_ARB 0x2027
+#ifndef WGL_WGLEXT_PROTOTYPES
+	WGLCREATECONTEXTATTRIBSARB wglCreateContextAttribsARB;
+	WGLCHOOSEPIXELFORMATARB wglChoosePixelFormatARB;
+	PFNWGLSWAPINTERVALEXTPROC       wglSwapIntervalEXT = NULL;
+	PFNWGLGETSWAPINTERVALEXTPROC    wglGetSwapIntervalEXT = NULL;
+#endif
+	
+#define LoadExt(extensionName) GL::LoadExt(extensionName,#extensionName)
+	
+class WOGL: public OGL
+{
+public:
+	WOGL(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil,unsigned char version);
+	~WOGL();
+	bool InitIn(Frame* frame);
+	void MakeCurrent(Frame* frame);
+	void ViewPort(float x,float y,float width,float height);
+	//void Clear( Buffer::buffer_t buffers = Buffer::Color | Buffer::Depth );
+	//void ClearColor( float R=.39f,float G=.40f,float B=.34f,float A=1.f );
+	void SwapBuffers();
+private:
+	int pixel_format_attribs[17]={
+        WGL_DRAW_TO_WINDOW_ARB,     GL_TRUE,
+        WGL_SUPPORT_OPENGL_ARB,     GL_TRUE,
+        WGL_DOUBLE_BUFFER_ARB,      GL_TRUE,
+        WGL_ACCELERATION_ARB,       WGL_FULL_ACCELERATION_ARB,
+        WGL_PIXEL_TYPE_ARB,         WGL_TYPE_RGBA_ARB,
+        WGL_COLOR_BITS_ARB,         32,
+        WGL_DEPTH_BITS_ARB,         24,
+        WGL_STENCIL_BITS_ARB,       8,
+        0
+    };
+	HGLRC gl_context;
+	FrameWindows* frameW;
+};
+
+bool OGL::TestInit(unsigned char color,unsigned char depth,unsigned char stencil){
+	WNDCLASSA window_class = {
+        .style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC,
+        .lpfnWndProc = DefWindowProcA,
+        .hInstance = GetModuleHandle(0),
+        .lpszClassName = "Dummy_WGL_Portable Engine"
+    };
+
+    if (!RegisterClassA(&window_class)) {
+        fatal_error("Failed to register dummy OpenGL window.");
+    }
+
+    HWND dummy_window = CreateWindowExA(
+        0,
+        window_class.lpszClassName,
+        "Dummy OpenGL Window",
+        0,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        0,
+        0,
+        window_class.hInstance,
+        0);
+
+    if (!dummy_window) {
+        fatal_error("Failed to create dummy OpenGL window.");
+    }
+	
+	HDC dummy_dc = GetDC(dummy_window);
+
+    PIXELFORMATDESCRIPTOR pfd = {
+        .nSize = sizeof(pfd),
+        .nVersion = 1,
+        .iPixelType = PFD_TYPE_RGBA,
+        .cColorBits = color,
+        .cAlphaBits = 8,
+        .iLayerType = PFD_MAIN_PLANE
+    };
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.cDepthBits = depth;
+    pfd.cStencilBits = stencil;
+
+    int pixel_format = ChoosePixelFormat(dummy_dc, &pfd);
+    if (!pixel_format) {
+        fatal_error("Failed to find a suitable pixel format.");
+    }
+    if (!SetPixelFormat(dummy_dc, pixel_format, &pfd)) {
+        fatal_error("Failed to set the pixel format.");
+    }
+
+    HGLRC dummy_context = wglCreateContext(dummy_dc);
+    if (!dummy_context) {
+        fatal_error("Failed to create a dummy OpenGL rendering context.");
+    }
+
+    if (!wglMakeCurrent(dummy_dc, dummy_context)) {
+        fatal_error("Failed to activate dummy OpenGL rendering context.");
+    }
+
+    GL::LoadExtensions();
+	/*LoadExt(wglCreateContextAttribsARB);
+	LoadExt(wglChoosePixelFormatARB);
+	LoadExt(wglSwapIntervalEXT);*/
+
+    wglMakeCurrent(dummy_dc, 0);
+    wglDeleteContext(dummy_context);
+    ReleaseDC(dummy_window, dummy_dc);
+    DestroyWindow(dummy_window);
+	return true;
+}
+
+OGL* OGL::Create(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil,unsigned char version){
+	return new WOGL(frame,color,depth,stencil,version);
+}
+
+WOGL::WOGL(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil,unsigned char version){
+	pixel_format_attribs[11] = color;
+	pixel_format_attribs[13] = depth;
+	pixel_format_attribs[15] = stencil;
+	
+	frameW = (FrameWindows*)frame;
+	HDC real_dc = frameW->DC();
+	
+    int pixel_format;
+    UINT num_formats;
+    wglChoosePixelFormatARB(real_dc, pixel_format_attribs, 0, 1, &pixel_format, &num_formats);
+    if (!num_formats) {
+        fatal_error("Failed to set the OpenGL pixel format.");
+    }
+
+    PIXELFORMATDESCRIPTOR pfd;
+    DescribePixelFormat(real_dc, pixel_format, sizeof(pfd), &pfd);
+    if (!SetPixelFormat(real_dc, pixel_format, &pfd)) {
+        fatal_error("Failed to set the OpenGL pixel format.");
+    }
+	
+	int glMaj=(int)(version/10),glMin=(int)(version%10);
+    // Specify that we want to create an OpenGL core profile context
+    int gl_attribs[] = {
+        WGL_CONTEXT_MAJOR_VERSION_ARB, glMaj,
+        WGL_CONTEXT_MINOR_VERSION_ARB, glMin,
+        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+        0,
+    };
+
+    gl_context = wglCreateContextAttribsARB(real_dc, 0, gl_attribs);
+    if (!gl_context) {
+        fatal_error("Failed to create OpenGL context.");
+    }
+
+    if (!wglMakeCurrent(real_dc, gl_context)) {
+        fatal_error("Failed to activate OpenGL rendering context.");
+    }
+	
+	printf("GL %i.%i Initialize Complete.\n",glMaj,glMin);
+}
+
+WOGL::~WOGL(){
+	wglMakeCurrent(frameW->DC(), 0);
+	wglDeleteContext(gl_context);
+}
+
+bool WOGL::InitIn(Frame* frame){
+	
+	frameW = (FrameWindows*)frame;
+	HDC real_dc = frameW->DC();
+	
+    int pixel_format;
+    UINT num_formats;
+    wglChoosePixelFormatARB(real_dc, pixel_format_attribs, 0, 1, &pixel_format, &num_formats);
+    if (!num_formats) {
+        fatal_error("Failed to set the OpenGL pixel format.");
+    }
+
+    PIXELFORMATDESCRIPTOR pfd;
+    DescribePixelFormat(real_dc, pixel_format, sizeof(pfd), &pfd);
+    if (!SetPixelFormat(real_dc, pixel_format, &pfd)) {
+        fatal_error("Failed to set the OpenGL pixel format.");
+    }
+	
+	return true;
+}
+
+void WOGL::MakeCurrent(Frame* frame){
+	frameW = (FrameWindows*)frame;
+    if (frameW->IsAlive() && !wglMakeCurrent(frameW->DC(), gl_context)) {
+        fatal_error("Failed to activate OpenGL rendering context.");
+    }
+	ViewPort(0,0,1,1);
+}
+
+void WOGL::ViewPort(float x,float y,float width,float height){
+	u_short w,h;
+	frameW->GetSize( w, h );
+	glViewport(x*w,y*h,(width-x)*w,(height-y)*h);
+}
+
+void WOGL::SwapBuffers(){
+	::SwapBuffers( frameW->DC() );
+}
+
+/*void WOGL::Clear( Buffer::buffer_t buffers){
+	glClear(buffers);
+}
+void WOGL::ClearColor( float R,float G,float B,float A ){
+	glClearColor(R,G,B,A);
+}*/
+
+#endif

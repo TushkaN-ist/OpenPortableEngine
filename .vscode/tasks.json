@@ -1,0 +1,136 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build release",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "windows": {
+                "command": "mingw32-make",
+                "args": ["TARGET := WIN"]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make"
+                ]
+            },
+            "osx": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make"
+                ]
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build release console",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "windows": {
+                "command": "mingw32-make",
+                "args": []
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make"
+                ]
+            },
+            "osx": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make"
+                ]
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build debug",
+            "type": "shell",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "windows": {
+                "command": "mingw32-make",
+                "args": ["TARGET := DEBUG"]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make",
+                    "TARGET := DEBUG"
+                ]
+            },
+            "osx": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "make",
+                    "TARGET := DEBUG"
+                ]
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "build & run",
+            "type": "shell",
+            "windows": {
+                "command": "mingw32-make",
+                "args": [
+                    "run"
+                ]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "'make run'"
+                ]
+            },
+            "osx": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "'make run'"
+                ]
+            }
+        },
+        {
+            "label": "clean",
+            "type": "shell",
+            "windows": {
+                "command": "mingw32-make",
+                "args": [
+                    "clean"
+                ]
+            },
+            "linux": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "'make clean'"
+                ]
+            },
+            "osx": {
+                "command": "bash",
+                "args": [
+                    "-c",
+                    "'make clean'"
+                ]
+            }
+        }
+    ]
+}
