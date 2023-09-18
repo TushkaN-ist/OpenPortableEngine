@@ -8,17 +8,49 @@
 #include <Math/Util.h>
 #include <Math/Quaternion.h>
 
-#include <ModelPMD.h>
-#include <TexturePC.h>
-#include <IO/IOFile.hpp>
+//#include <ModelPMD.h>
+//#include <TexturePC.h>
+//#include <IO/IOFile.hpp>
 
-#define SIMPLEBMP_OPENGL
-#include <simplebmp.h>
+//#define SIMPLEBMP_OPENGL
+//#include <simplebmp.h>
 
-char* _APP_NAME = "Open Portable Engine";
+const char* _APP_NAME = "Open Portable Engine";
 
 namespace UserBehaviour{
-	void _UserMain(int argc, char **argv){
+	
+	void UserMain(int argc, char **argv){
+	
+    	timeBeginPeriod(1);
+		if (Graphics::TestInit()){
+			Frame *frame = Frame::Create(640,480,Frame::Style::Base);
+			Input &input = *frame->GetInput();
+			Graphics *graphic = Graphics::Create(frame);
+			Graphics::SetVerticalSync(false);
+			
+			FPS *fps = FPS::Create(30);
+
+			while ( fps->Update() && frame->Update())
+			{
+				if (input.Down(KEYCODE::KC_ESCAPE)){
+					frame->Close();
+					break;
+				}
+				if (input.Down(KEYCODE::KC_1))
+					frame->SetStyle(Frame::Fullscreen);
+				if (input.Down(KEYCODE::KC_2))
+					frame->SetStyle(Frame::NoBorders);
+				if (input.Down(KEYCODE::KC_3))
+					frame->SetStyle(Frame::Base);
+				graphic->MakeCurrent(frame);
+				Graphics::ClearColor();
+				Graphics::Clear();
+				graphic->SwapBuffers();
+			}
+		}
+    	timeEndPeriod(1);
+	}
+	/*void _UserMain(int argc, char **argv){
 		char path[255];
 		std::map<unsigned short,unsigned char> materialsMap;
 		int i=1;
@@ -63,12 +95,12 @@ namespace UserBehaviour{
 		}
 
     	timeBeginPeriod(1);
-		if (OGL::TestInit()){
+		if (Graphics::TestInit()){
 			Frame *frame = Frame::Create(640,480,Frame::Style::Closing);
 			//frame->SetTitle("MainFrame");
 			Input &input = *frame->GetInput();
-			OGL *graphic = OGL::Create(frame);
-			OGL::SetVerticalSync(false);
+			Graphics *graphic = Graphics::Create(frame);
+			Graphics::SetVerticalSync(false);
 
 			GL::Shader vert(GL::ShaderType::Vertex, 
 			"#version 130\n varying vec4 v_color; varying vec2 v_texcoord; void main() { gl_Position = ftransform(); v_color = gl_Color.rgba; v_texcoord = gl_MultiTexCoord0.st; }");
@@ -156,8 +188,8 @@ namespace UserBehaviour{
 				GL::Mat4 matrixCameraResult = (CameraFirstPos * cameraPosition).Inverse();
 
 				graphic->MakeCurrent(frame);
-				OGL::ClearColor();
-				OGL::Clear();
+				Graphics::ClearColor();
+				Graphics::Clear();
 				glLoadMatrixf(matrixCameraResult.m);
 
 				switch(pmd->type){
@@ -171,8 +203,8 @@ namespace UserBehaviour{
 						lod.Draw();
 					}break;
 				}
-				//OGL::DrawArrays(vao, Primitive::Points, 0, mesh.vertexCount);
-				//OGL::DrawArrays(vao, Primitive::Points, 0, pmdPack->header->offsetsTableSize[]);
+				//Graphics::DrawArrays(vao, Primitive::Points, 0, mesh.vertexCount);
+				//Graphics::DrawArrays(vao, Primitive::Points, 0, pmdPack->header->offsetsTableSize[]);
 				graphic->SwapBuffers();
 				
 			}
@@ -190,5 +222,5 @@ namespace UserBehaviour{
 		}
     	timeEndPeriod(1);
 		free(pmd);
-	}
+	}*/
 }

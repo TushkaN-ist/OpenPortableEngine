@@ -4,8 +4,7 @@
             "name": "Win32 DEBUG",
             "includePath": [
                 "${workspaceFolder}/Engine/**",
-                "${workspaceFolder}/libenjoy-master/**",
-                "${workspaceFolder}/Game/**"
+                "${workspaceFolder}/libenjoy-master/**"
             ],
             "defines": [
                 "_DEBUG",
@@ -13,10 +12,10 @@
                 "_UNICODE"
             ],
             "windowsSdkVersion": "10.0.18362.0",
-            "compilerPath": "E:/msys64/mingw64/bin/gcc",
+            "compilerPath": "E:/msys64/mingw32/bin/g++.exe",
             "cStandard": "c11",
             "cppStandard": "c++11",
-            "intelliSenseMode": "windows-gcc-x64",
+            "intelliSenseMode": "windows-gcc-x86",
             "compilerArgs": [],
             "configurationProvider": "ms-vscode.makefile-tools"
         }

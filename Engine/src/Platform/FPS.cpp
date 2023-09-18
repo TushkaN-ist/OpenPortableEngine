@@ -33,8 +33,8 @@ FPS* FPS::Create(unsigned short target){
 
 void WFPS::Set(unsigned short fps){
 	_target = fps;
-	_sleep = frequency.LowPart / _target / 11 - 500;
-	printf("%i %i\n",frequency.LowPart, _sleep);
+	_sleep = frequency.LowPart / _target / 10 - 1000;
+	//printf("%i %i\n",frequency.LowPart, _sleep);
 	//_sleep = 1000000 / _target - 2000;
 }
 

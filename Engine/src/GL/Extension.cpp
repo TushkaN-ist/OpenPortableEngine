@@ -148,7 +148,8 @@ namespace GL
 		if ( extensionsLoaded ) return;
 			extensionsLoaded = true;
 
-#ifndef WGL_WGLEXT_PROTOTYPES && defined(_PLATFORM_WINDOWS)
+#if defined(_PLATFORM_WINDOWS)
+#ifndef WGL_WGLEXT_PROTOTYPES
 		LoadExt(wglCreateContextAttribsARB);
 		LoadExt(wglChoosePixelFormatARB);
 		if (WGLExtensionSupported("WGL_EXT_swap_control"))
@@ -156,6 +157,7 @@ namespace GL
 			LoadExt(wglSwapIntervalEXT);
 			LoadExt(wglGetSwapIntervalEXT);
 		}
+#endif
 #endif
 #ifndef GL_GLEXT_PROTOTYPES
 		LoadExt(glCompileShader);

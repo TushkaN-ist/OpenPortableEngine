@@ -15,13 +15,16 @@ D_INCLUDEDIRS	= $(shell find $(INCLUDE) -type d)
 D_LIBDIRS		= $(shell find $(LIB) -type d)
 endif
 
+EXCLUDES := $(shell type $(OS)_exclude.txt)
+
 $(eval SOURCEDIRS += $(D_SOURCEDIRS))
 $(eval INCLUDEDIRS += $(D_INCLUDEDIRS))
 $(eval LIBDIRS += $(D_LIBDIRS))
 
 CODE := *.c *.cpp *.s
 
-SRCS := $(shell where /r $(SRC) $(CODE))
+_SRCS := $(shell where /r $(SRC) $(CODE))
+SRCS := $(filter-out $(addsuffix $(EXCLUDES),$(shell cd)),$(_SRCS))
 #OBJCS := $(patsubst $(realpath $(SOURCEDIRS))%, $(realpath $(OBJDIR))%,$(realpath $(SRCS)))
 OBJCS := $(SRCS:.c=.o)
 OBJCS := $(OBJCS:.cpp=.o)

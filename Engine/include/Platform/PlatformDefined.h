@@ -1,6 +1,6 @@
 #pragma once
 
-extern char* _APP_NAME;
+extern const char* _APP_NAME;
 
 #if defined( _WIN32 ) || defined( _WIN64 )
 	#define _PLATFORM_WINDOWS
@@ -14,7 +14,7 @@ extern char* _APP_NAME;
 
 #define ENGINE_VERSION "0.5a"
 
-#define DEFNAME "'PORTABLE ENGINE' " ENGINE_VERSION " \0"
+#define DEFNAME "'PORTABLE ENGINE' " ENGINE_VERSION ""
 
 #ifndef _PLATFORM_PSP
 #ifndef GL_VERSION_TARGET

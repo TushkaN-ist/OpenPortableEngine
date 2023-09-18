@@ -1,6 +1,6 @@
 #pragma once
 
-class OGL;
+class Graphics;
 class Input;
 
 
@@ -10,10 +10,11 @@ public:
 
 	enum Style
 	{
-		Base = 0,
-		Resize = 1,
-		Closing = 2,
-		Fullscreen = 4
+		NoBorders = 0,
+		Base = 1,
+		Resize = 2,
+		Closing = 4,
+		Fullscreen = 8
 	};
 	enum Events
 	{
@@ -52,5 +53,5 @@ protected:
 
 inline Frame::Style operator|( Frame::Style lft, Frame::Style rht )
 {
-	return (Frame::Style)( (int)lft | (int)rht );
+	return Frame::Style( lft | rht );
 }

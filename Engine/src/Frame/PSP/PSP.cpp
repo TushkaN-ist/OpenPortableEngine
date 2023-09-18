@@ -286,7 +286,7 @@ static EGLint attrib_list [] = {
 	EGL_NONE
 };
 
-class PSPEGL: public OGL
+class PSPEGL: public Graphics
 {
 public:
 	PSPEGL(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil);
@@ -362,12 +362,12 @@ void PSPEGL::SwapBuffers(){
 	eglSwapBuffers(display, surface);
 }
 
-OGL* OGL::Create(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil,unsigned char version){
+Graphics* Graphics::Create(Frame* frame,unsigned char color,unsigned char depth,unsigned char stencil,unsigned char version){
 	if (egl)
 		return egl;
 	return new PSPEGL(frame,color,depth,stencil);
 }
-bool OGL::TestInit(unsigned char color,unsigned char depth,unsigned char stencil){
+bool Graphics::TestInit(unsigned char color,unsigned char depth,unsigned char stencil){
 	return true;//Just cost we CAN
 }
 

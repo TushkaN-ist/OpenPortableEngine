@@ -108,16 +108,16 @@ class Frame;
 			Invert = GL_INVERT
 		};
 	}
-
-class OGL
+class Graphics
 {
 public:
-	virtual ~OGL(){};
-	static OGL* Create(Frame* frame,unsigned char color=24,unsigned char depth=24,unsigned char stencil=8,unsigned char version=GL_VERSION_TARGET);
+	virtual ~Graphics(){};
+	static Graphics* Create(Frame* frame,unsigned char color=24,unsigned char depth=24,unsigned char stencil=8,unsigned char version=GL_VERSION_TARGET);
 	static bool TestInit(unsigned char color=24,unsigned char depth=24,unsigned char stencil=8);
 	virtual bool InitIn(Frame*)=0;
 	virtual void MakeCurrent(Frame* frame)=0;
 	virtual void ViewPort(float x,float y,float width,float height)=0;
+	virtual void ViewPort(short x, short y, short width, short height)=0;
 	virtual void SwapBuffers()=0;
 	
 	static void Clear( Buffer::buffer_t buffers = Buffer::Color | Buffer::Depth );
